@@ -1,0 +1,130 @@
+::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background: #0b0f17;
+        }
+
+        .leaflet-container {
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background-color: #1f2937;
+            color: #38bdf8;
+            border-left: 3px solid #0284c7;
+        }
+
+        .decision-selected {
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4),
+                        0 0 25px rgba(56, 189, 248, 0.08);
+        }
+
+        .vertex-marker {
+            width: 11px;
+            height: 11px;
+            background: #38bdf8;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: grab;
+        }
+
+        .decision-banner {
+            transition: all .2s ease;
+        }
+
+/* =========================================================
+   DRISHTIX SIH FRONTEND POLISH / RESPONSIVE OVERRIDES
+   ========================================================= */
+
+:root { color-scheme: dark; }
+html, body { min-width: 320px; }
+button, select, textarea, input { font: inherit; }
+button { user-select: none; }
+
+.demo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.5rem;
+    padding: 0.18rem 0.5rem;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 999px;
+    background: rgba(2, 132, 199, 0.08);
+    color: #7dd3fc;
+    font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    letter-spacing: .08em;
+}
+.demo-badge::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, .08);
+}
+
+.leaflet-control-zoom a {
+    background: #111827 !important;
+    color: #cbd5e1 !important;
+    border-color: #374151 !important;
+}
+.leaflet-control-attribution {
+    background: rgba(17, 24, 39, .86) !important;
+    color: #94a3b8 !important;
+}
+.leaflet-control-attribution a { color: #7dd3fc !important; }
+::selection { background: rgba(14, 165, 233, .28); color: white; }
+
+@media (max-width: 1100px) {
+    header > div:last-child { gap: .6rem !important; }
+    header > div:last-child > div:nth-child(2),
+    header > div:last-child > div:nth-child(3) { display: none; }
+    .w-60 { width: 13rem !important; }
+    .w-80 { width: 20rem !important; }
+    .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .grid-cols-3 { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media (max-width: 800px) {
+    header {
+        height: auto !important;
+        min-height: 3.5rem;
+        flex-wrap: wrap;
+        gap: .5rem;
+        padding-block: .5rem;
+    }
+    header > div:first-child { min-width: 0; }
+    header > div:first-child > span { display: none; }
+    header > div:last-child { margin-left: auto; }
+    .flex-1.flex.overflow-hidden.relative { overflow: auto !important; }
+    aside.w-60 { width: 4rem !important; min-width: 4rem; }
+    aside .px-4.pb-2, aside .tab-btn > span:not(.flex), aside .tab-btn { font-size: 0 !important; }
+    aside .tab-btn { justify-content: center !important; padding-inline: .8rem !important; }
+    aside .tab-btn svg { width: 1.1rem; height: 1.1rem; }
+    aside .tab-btn span.flex { gap: 0 !important; }
+    aside #queue-count { display: none; }
+    aside .p-3 { display: none; }
+    .grid-cols-2, .grid-cols-3, .grid-cols-4 { grid-template-columns: 1fr !important; }
+    #view-viewer { flex-direction: column !important; min-height: 720px; }
+    #view-viewer > .flex-1 { min-height: 440px; }
+    #view-viewer .w-80 { width: 100% !important; max-height: 360px; }
+    #map { min-height: 440px; }
+}

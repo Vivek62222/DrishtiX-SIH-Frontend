@@ -1,0 +1,4879 @@
+```html
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrishtiX - Cadastral Parcel Validation Workstation</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gis: {
+                            900: '#0b0f17',
+                            800: '#111827',
+                            700: '#1f2937',
+                            600: '#374151',
+                            accent: '#0284c7',
+                            success: '#10b981',
+                            warning: '#f59e0b',
+                            danger: '#ef4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Leaflet -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Turf -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background: #0b0f17;
+        }
+
+        .leaflet-container {
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background-color: #1f2937;
+            color: #38bdf8;
+            border-left: 3px solid #0284c7;
+        }
+
+        .decision-selected {
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4),
+                        0 0 25px rgba(56, 189, 248, 0.08);
+        }
+
+        .vertex-marker {
+            width: 11px;
+            height: 11px;
+            background: #38bdf8;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: grab;
+        }
+
+        .decision-banner {
+            transition: all .2s ease;
+        }
+    </style>
+</head>
+
+<body class="bg-gis-900 text-slate-200 h-screen w-screen overflow-hidden flex flex-col font-sans antialiased">
+
+<!-- =========================================================
+     TOP BAR
+========================================================= -->
+<header class="h-14 bg-gis-800 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 z-30">
+
+    <div class="flex items-center gap-3">
+
+        <div class="bg-sky-600 p-1.5 rounded-lg text-white font-bold tracking-wider flex items-center gap-1.5 text-sm">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            DRISHTIX
+        </div>
+
+        <span class="text-xs font-mono text-slate-400 border-l border-slate-700 pl-3">
+            GeoAI Cadastral Workstation v2.5
+        </span>
+    </div>
+
+    <div class="flex items-center gap-6 text-xs">
+
+        <!-- Device -->
+        <div class="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-full border border-slate-800">
+
+            <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+
+            <span class="text-slate-300 font-medium">
+                Device:
+                <span id="top-device-id" class="text-white font-mono">
+                    D-102 (Mobile)
+                </span>
+            </span>
+        </div>
+
+        <!-- Active Parcel -->
+        <div class="flex items-center gap-2">
+            <span class="text-slate-400">Active Parcel:</span>
+
+            <span
+                id="top-parcel-id"
+                class="font-mono bg-sky-950 text-sky-400 px-2 py-0.5 rounded border border-sky-800 font-bold">
+                PX-00124
+            </span>
+        </div>
+
+        <!-- Status -->
+        <div class="flex items-center gap-2">
+            <span class="text-slate-400">Status:</span>
+
+            <span
+                id="top-parcel-status"
+                class="bg-amber-950/80 text-amber-400 border border-amber-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider">
+                UNDER REVIEW
+            </span>
+        </div>
+
+        <button
+            onclick="openReceiveModal()"
+            class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition text-xs shadow-lg shadow-sky-950">
+            <i data-lucide="qr-code" class="w-3.5 h-3.5"></i>
+            Receive Parcel
+        </button>
+
+    </div>
+</header>
+
+
+<!-- =========================================================
+     MAIN APP
+========================================================= -->
+<div class="flex-1 flex overflow-hidden relative">
+
+    <!-- =====================================================
+         LEFT SIDEBAR
+    ====================================================== -->
+    <aside class="w-60 bg-gis-800 border-r border-slate-800 flex flex-col justify-between shrink-0 z-20">
+
+        <div class="py-3">
+
+            <div class="px-4 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Navigation Workstation
+            </div>
+
+            <nav class="space-y-0.5">
+
+                <button
+                    onclick="switchView('dashboard')"
+                    id="nav-dashboard"
+                    class="tab-btn active w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                    Dashboard
+                </button>
+
+                <button
+                    onclick="switchView('queue')"
+                    id="nav-queue"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition justify-between">
+
+                    <span class="flex items-center gap-3">
+                        <i data-lucide="list-checks" class="w-4 h-4"></i>
+                        Parcel Queue
+                    </span>
+
+                    <span
+                        id="queue-count"
+                        class="bg-sky-900 text-sky-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        4
+                    </span>
+                </button>
+
+                <button
+                    onclick="switchView('viewer')"
+                    id="nav-viewer"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="map" class="w-4 h-4"></i>
+                    Parcel Viewer & Editor
+                </button>
+
+                <button
+                    onclick="switchView('validation')"
+                    id="nav-validation"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                    Validation & QA
+                </button>
+
+                <button
+                    onclick="switchView('reference')"
+                    id="nav-reference"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="git-compare" class="w-4 h-4"></i>
+                    Cadastral Reference
+                </button>
+
+                <button
+                    onclick="switchView('comparison')"
+                    id="nav-comparison"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="columns" class="w-4 h-4"></i>
+                    3-Way Comparison
+                </button>
+
+                <button
+                    onclick="switchView('manual')"
+                    id="nav-manual"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="user-check" class="w-4 h-4"></i>
+                    Manual Inspection
+                </button>
+
+                <button
+                    onclick="switchView('history')"
+                    id="nav-history"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition">
+                    <i data-lucide="history" class="w-4 h-4"></i>
+                    Audit Trail & Log
+                </button>
+
+            </nav>
+        </div>
+
+
+        <!-- Sidebar Footer -->
+        <div class="p-3 bg-gis-900 border-t border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+
+            <div class="flex justify-between">
+                <span>Session Approved:</span>
+                <span id="approved-count" class="text-emerald-400 font-bold">0</span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Session Rejected:</span>
+                <span id="rejected-count" class="text-rose-400 font-bold">0</span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Manual Inspection:</span>
+                <span id="manual-count" class="text-amber-400 font-bold">0</span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Map Engine:</span>
+                <span class="text-sky-400">Leaflet Active</span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>GIS Reference:</span>
+                <span class="text-violet-400">Cadastral Layer</span>
+            </div>
+
+        </div>
+    </aside>
+
+
+    <!-- =====================================================
+         CENTER
+    ====================================================== -->
+    <main class="flex-1 bg-gis-900 relative overflow-hidden flex flex-col">
+
+
+        <!-- =================================================
+             DASHBOARD
+        ================================================== -->
+        <section
+            id="view-dashboard"
+            class="p-6 overflow-y-auto space-y-6 h-full">
+
+            <div class="flex items-center justify-between">
+
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        QA Triage Dashboard
+                    </h1>
+
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Incoming cadastral parcel validation and human review
+                    </p>
+                </div>
+
+                <button
+                    onclick="openReceiveModal()"
+                    class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2">
+
+                    <i data-lucide="qr-code" class="w-4 h-4"></i>
+                    Pair Field Device
+                </button>
+
+            </div>
+
+
+            <!-- KPI CARDS -->
+            <div class="grid grid-cols-4 gap-4">
+
+                <div class="bg-gis-800 p-4 rounded-xl border border-slate-800">
+                    <div class="text-slate-400 text-xs font-medium">
+                        Parcels Received
+                    </div>
+
+                    <div id="kpi-received" class="text-2xl font-bold text-white mt-1">
+                        4
+                    </div>
+
+                    <div class="text-[10px] text-emerald-400 mt-1">
+                        Live field queue
+                    </div>
+                </div>
+
+
+                <div class="bg-gis-800 p-4 rounded-xl border border-slate-800">
+                    <div class="text-slate-400 text-xs font-medium">
+                        Approved
+                    </div>
+
+                    <div id="kpi-approved" class="text-2xl font-bold text-emerald-400 mt-1">
+                        1
+                    </div>
+
+                    <div class="text-[10px] text-slate-500 mt-1">
+                        Reviewer approved
+                    </div>
+                </div>
+
+
+                <div class="bg-gis-800 p-4 rounded-xl border border-slate-800">
+                    <div class="text-slate-400 text-xs font-medium">
+                        Needs Review
+                    </div>
+
+                    <div id="kpi-review" class="text-2xl font-bold text-amber-400 mt-1">
+                        2
+                    </div>
+
+                    <div class="text-[10px] text-amber-400/80 mt-1">
+                        Human verification required
+                    </div>
+                </div>
+
+
+                <div class="bg-gis-800 p-4 rounded-xl border border-slate-800">
+                    <div class="text-slate-400 text-xs font-medium">
+                        Manual / Denied
+                    </div>
+
+                    <div id="kpi-manual" class="text-2xl font-bold text-rose-400 mt-1">
+                        1
+                    </div>
+
+                    <div class="text-[10px] text-rose-400/80 mt-1">
+                        Escalated or rejected
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- Recent Queue -->
+            <div class="bg-gis-800 rounded-xl border border-slate-800 overflow-hidden">
+
+                <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i data-lucide="clock" class="w-4 h-4 text-sky-400"></i>
+                        Recent Incoming Parcels
+                    </h2>
+
+                    <span class="text-xs text-slate-400">
+                        Live Stream from Mobile Node
+                    </span>
+
+                </div>
+
+                <table class="w-full text-left text-xs text-slate-300">
+
+                    <thead class="bg-slate-900/50 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                            <th class="p-3">Parcel ID</th>
+                            <th class="p-3">Source Device</th>
+                            <th class="p-3">Area (m²)</th>
+                            <th class="p-3">AI Confidence</th>
+                            <th class="p-3">Decision</th>
+                            <th class="p-3">Timestamp</th>
+                            <th class="p-3 text-right">Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="dashboard-table-body"
+                           class="divide-y divide-slate-800/60 font-mono">
+                    </tbody>
+
+                </table>
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             QUEUE
+        ================================================== -->
+        <section
+            id="view-queue"
+            class="hidden p-6 overflow-y-auto space-y-4 h-full">
+
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        Pending Parcel Workstation Queue
+                    </h1>
+
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        All parcels received from mobile field devices
+                    </p>
+                </div>
+            </div>
+
+            <div
+                id="queue-grid"
+                class="grid grid-cols-3 gap-4">
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             VIEWER
+        ================================================== -->
+        <section
+            id="view-viewer"
+            class="hidden flex-1 flex h-full relative">
+
+            <!-- MAP -->
+            <div class="flex-1 relative">
+
+                <div id="map"></div>
+
+
+                <!-- Map Toolbar -->
+                <div
+                    class="absolute top-4 left-4 z-[1000] bg-gis-800/95 backdrop-blur border border-slate-700 p-2 rounded-lg flex items-center gap-2 shadow-xl flex-wrap max-w-[900px]">
+
+                    <!-- Base maps -->
+                    <button
+                        onclick="setBaseMap('satellite')"
+                        id="btn-satellite"
+                        class="px-2.5 py-1 rounded text-xs font-medium bg-sky-950 text-sky-400 border border-sky-800">
+                        Satellite
+                    </button>
+
+                    <button
+                        onclick="setBaseMap('street')"
+                        id="btn-street"
+                        class="px-2.5 py-1 rounded text-xs font-medium bg-slate-700 text-slate-300 border border-slate-600">
+                        Street
+                    </button>
+
+                    <div class="h-4 w-px bg-slate-700"></div>
+
+                    <!-- GIS layers -->
+                    <button
+                        onclick="toggleLayer('ai')"
+                        id="toggle-ai"
+                        class="px-2.5 py-1 rounded text-xs font-medium bg-red-950 text-red-300 border border-red-800">
+                        ☑ AI Candidate
+                    </button>
+
+                    <button
+                        onclick="toggleLayer('ref')"
+                        id="toggle-ref"
+                        class="px-2.5 py-1 rounded text-xs font-medium bg-blue-950 text-blue-300 border border-blue-800">
+                        ☑ Cadastral Reference
+                    </button>
+
+                    <button
+                        onclick="toggleLayer('human')"
+                        id="toggle-human"
+                        class="px-2.5 py-1 rounded text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">
+                        ☑ Human Edited
+                    </button>
+
+                    <div class="h-4 w-px bg-slate-700"></div>
+
+                    <!-- Editing -->
+                    <button
+                        onclick="toggleEditMode()"
+                        id="edit-button"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded text-xs font-medium">
+                        Edit Geometry
+                    </button>
+
+                    <button
+                        onclick="addVertexMode()"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded text-xs font-medium">
+                        Add Vertex
+                    </button>
+
+                    <button
+                        onclick="deleteLastVertex()"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded text-xs font-medium">
+                        Delete Vertex
+                    </button>
+
+                    <button
+                        onclick="recalculateGeometry()"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                        Recalculate
+                    </button>
+                </div>
+
+
+                <!-- MAP LEGEND -->
+                <div
+                    class="absolute top-20 right-4 z-[1000] bg-gis-800/95 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl">
+
+                    <div class="text-[10px] font-bold text-white mb-2 uppercase tracking-wider">
+                        GIS Layers
+                    </div>
+
+                    <div class="space-y-1.5 text-[10px]">
+
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded border border-red-500 bg-red-500/40"></span>
+                            AI Candidate
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded border border-blue-500 bg-blue-500/20"></span>
+                            Cadastral Reference
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded border border-emerald-500 bg-emerald-500/30"></span>
+                            Human Edited
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Problem banner -->
+                <div
+                    id="problem-banner"
+                    class="absolute bottom-4 left-4 z-[1000] bg-rose-950/95 border border-rose-800 text-rose-200 px-4 py-2.5 rounded-lg flex items-center justify-between gap-4 text-xs shadow-2xl max-w-md">
+
+                    <div class="flex items-center gap-2">
+
+                        <i
+                            data-lucide="alert-triangle"
+                            class="w-5 h-5 text-rose-400 shrink-0">
+                        </i>
+
+                        <div>
+
+                            <div class="font-bold">
+                                Topology / QA Issue
+                            </div>
+
+                            <div
+                                id="problem-text"
+                                class="text-[11px] text-rose-300">
+                                Reference comparison requires human review.
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <button
+                        onclick="zoomToProblem()"
+                        class="bg-rose-800 hover:bg-rose-700 text-white px-2 py-1 rounded font-semibold text-[10px] shrink-0">
+                        Focus Error
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <!-- RIGHT INSPECTOR -->
+            <div class="w-80 bg-gis-800 border-l border-slate-800 p-4 overflow-y-auto space-y-5 flex flex-col justify-between shrink-0">
+
+                <div class="space-y-4">
+
+                    <h2
+                        class="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-700 pb-2">
+
+                        <i
+                            data-lucide="file-text"
+                            class="w-4 h-4 text-sky-400">
+                        </i>
+
+                        Parcel Overview Metadata
+                    </h2>
+
+
+                    <div
+                        id="parcel-metadata"
+                        class="space-y-2 text-xs">
+                    </div>
+
+
+                    <!-- Decision Status -->
+                    <div
+                        id="decision-display"
+                        class="decision-banner bg-slate-900 border border-slate-700 rounded-lg p-3">
+
+                        <div class="text-[10px] uppercase font-bold tracking-wider text-slate-500">
+                            Current Reviewer Decision
+                        </div>
+
+                        <div
+                            id="decision-text"
+                            class="text-sm font-black text-amber-400 mt-1">
+                            NOT DECIDED
+                        </div>
+
+                        <div
+                            id="decision-subtext"
+                            class="text-[10px] text-slate-400 mt-1">
+                            Complete validation before selecting a final workflow.
+                        </div>
+                    </div>
+
+
+                    <!-- Actions -->
+                    <div class="space-y-2 pt-2">
+
+                        <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider">
+                            Human-In-The-Loop Actions
+                        </div>
+
+                        <button
+                            onclick="openDecisionModal('APPROVE')"
+                            class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950">
+                            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                            Approve
+                        </button>
+
+                        <button
+                            onclick="openDecisionModal('REJECT')"
+                            class="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            Reject / Return for Correction
+                        </button>
+
+                        <button
+                            onclick="openManualModal()"
+                            class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-950">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                            Send for Manual Inspection
+                        </button>
+
+                        <button
+                            onclick="openDecisionModal('DENY')"
+                            class="w-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i>
+                            Deny Parcel
+                        </button>
+
+                        <button
+                            onclick="sendCurrentPackage()"
+                            class="w-full bg-sky-700 hover:bg-sky-600 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2">
+                            <i data-lucide="send" class="w-4 h-4"></i>
+                            Send Current Result to Phone
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Disclaimer -->
+                <div
+                    class="p-3 bg-slate-900 rounded-lg border border-slate-800 text-[11px] text-slate-400">
+
+                    <div
+                        class="font-bold text-slate-300 mb-1 flex items-center gap-1">
+
+                        <i
+                            data-lucide="info"
+                            class="w-3.5 h-3.5 text-sky-400">
+                        </i>
+
+                        Cadastral Reference Note
+                    </div>
+
+                    DrishtiX uses the available cadastral/reference layer for comparison and QA.
+                    It does not automatically establish legal ownership or final legal boundaries.
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             VALIDATION
+        ================================================== -->
+        <section
+            id="view-validation"
+            class="hidden p-6 overflow-y-auto space-y-6 h-full">
+
+            <div class="flex justify-between items-center">
+
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        Automated QA Technical Validation
+                    </h1>
+
+                    <p
+                        id="validation-subtitle"
+                        class="text-xs text-slate-400 mt-0.5">
+                        Technical spatial validation
+                    </p>
+                </div>
+
+                <div
+                    class="bg-gis-800 border border-slate-800 px-4 py-2 rounded-xl flex items-center gap-4">
+
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">
+                            Technical QA Score
+                        </div>
+
+                        <div
+                            id="qa-score"
+                            class="text-2xl font-black text-amber-400">
+                            0%
+                        </div>
+                    </div>
+
+                    <span
+                        id="qa-status"
+                        class="bg-amber-950 text-amber-400 border border-amber-800 text-[10px] font-bold px-2 py-1 rounded">
+                        NEEDS HUMAN REVIEW
+                    </span>
+
+                </div>
+            </div>
+
+
+            <!-- Check Grid -->
+            <div
+                id="validation-grid"
+                class="grid grid-cols-2 gap-4">
+            </div>
+
+
+            <!-- Explain Why -->
+            <div
+                class="bg-slate-900 border border-sky-900/60 p-4 rounded-xl space-y-2">
+
+                <div
+                    class="flex items-center gap-2 text-sky-400 font-bold text-sm">
+
+                    <i
+                        data-lucide="sparkles"
+                        class="w-4 h-4">
+                    </i>
+
+                    Explain Why
+                </div>
+
+                <p
+                    id="explain-why"
+                    class="text-xs text-slate-300 leading-relaxed">
+                    Run validation to generate a diagnosis.
+                </p>
+
+                <div class="pt-2 flex gap-2">
+
+                    <button
+                        onclick="switchView('viewer')"
+                        class="bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1">
+
+                        <i
+                            data-lucide="edit-3"
+                            class="w-3.5 h-3.5">
+                        </i>
+
+                        Open Editor
+                    </button>
+
+                    <button
+                        onclick="runValidation()"
+                        class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded font-semibold">
+
+                        Re-run QA
+                    </button>
+
+                </div>
+            </div>
+
+
+            <!-- Decision buttons -->
+            <div
+                class="bg-gis-800 border border-slate-800 rounded-xl p-4">
+
+                <div
+                    class="flex justify-between items-center gap-4">
+
+                    <div>
+                        <div class="text-sm font-bold text-white">
+                            Final Review Workflow
+                        </div>
+
+                        <div class="text-[10px] text-slate-400 mt-1">
+                            Select exactly what should happen to this parcel.
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 flex-wrap">
+
+                        <button
+                            onclick="openDecisionModal('APPROVE')"
+                            class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded text-xs font-bold">
+                            Approve
+                        </button>
+
+                        <button
+                            onclick="openDecisionModal('REJECT')"
+                            class="bg-orange-600 hover:bg-orange-500 text-white px-3 py-2 rounded text-xs font-bold">
+                            Reject
+                        </button>
+
+                        <button
+                            onclick="openManualModal()"
+                            class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded text-xs font-bold">
+                            Manual Inspection
+                        </button>
+
+                        <button
+                            onclick="openDecisionModal('DENY')"
+                            class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded text-xs font-bold">
+                            Deny
+                        </button>
+
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             REFERENCE
+        ================================================== -->
+        <section
+            id="view-reference"
+            class="hidden p-6 overflow-y-auto space-y-6 h-full">
+
+            <div class="flex justify-between items-center">
+
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        Cadastral Reference Check
+                    </h1>
+
+                    <p
+                        class="text-xs text-slate-400 mt-0.5">
+                        Compare AI candidate geometry with available cadastral reference data
+                    </p>
+                </div>
+
+                <button
+                    onclick="switchView('viewer')"
+                    class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded text-xs font-semibold">
+                    Open Map Comparison
+                </button>
+
+            </div>
+
+
+            <div class="grid grid-cols-3 gap-4">
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-red-900/50">
+
+                    <div class="text-[10px] text-red-400 font-bold uppercase mb-3">
+                        AI Candidate
+                    </div>
+
+                    <div id="reference-candidate-stats"></div>
+
+                </div>
+
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-blue-900/50">
+
+                    <div class="text-[10px] text-blue-400 font-bold uppercase mb-3">
+                        Cadastral Reference
+                    </div>
+
+                    <div id="reference-cadastral-stats"></div>
+
+                </div>
+
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-emerald-900/50">
+
+                    <div class="text-[10px] text-emerald-400 font-bold uppercase mb-3">
+                        Human Reviewed
+                    </div>
+
+                    <div id="reference-human-stats"></div>
+
+                </div>
+
+            </div>
+
+
+            <div class="bg-gis-800 p-5 rounded-xl border border-slate-800">
+
+                <h3 class="text-sm font-bold text-white mb-3">
+                    Reference Comparison
+                </h3>
+
+                <div
+                    id="reference-table"
+                    class="text-xs">
+                </div>
+
+            </div>
+
+
+            <div
+                class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+
+                <div class="text-xs font-bold text-slate-300 mb-2">
+                    Cadastral Layer
+                </div>
+
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    The blue polygon in the map represents the available cadastral/reference
+                    geometry supplied to the workstation. In the production system, this can be
+                    replaced with your official GeoJSON/PostGIS cadastral layer.
+                </p>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             COMPARISON
+        ================================================== -->
+        <section
+            id="view-comparison"
+            class="hidden p-6 overflow-y-auto space-y-6 h-full">
+
+            <div>
+                <h1 class="text-xl font-bold text-white">
+                    3-Way Polygon Comparison Matrix
+                </h1>
+
+                <p class="text-xs text-slate-400 mt-0.5">
+                    AI Candidate vs Cadastral Reference vs Human Edited
+                </p>
+            </div>
+
+
+            <div class="grid grid-cols-3 gap-4">
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-red-900/50 space-y-3">
+
+                    <div
+                        class="flex justify-between items-center border-b border-slate-700 pb-2">
+
+                        <span class="font-bold text-xs text-red-400">
+                            AI Candidate Layer
+                        </span>
+
+                        <span class="text-[10px] bg-red-950 text-red-300 px-2 py-0.5 rounded">
+                            AI
+                        </span>
+                    </div>
+
+                    <div id="comparison-ai"></div>
+                </div>
+
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-blue-900/50 space-y-3">
+
+                    <div
+                        class="flex justify-between items-center border-b border-slate-700 pb-2">
+
+                        <span class="font-bold text-xs text-blue-400">
+                            Cadastral Reference
+                        </span>
+
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded">
+                            REFERENCE
+                        </span>
+                    </div>
+
+                    <div id="comparison-ref"></div>
+                </div>
+
+
+                <div
+                    class="bg-gis-800 p-4 rounded-xl border border-emerald-900/50 space-y-3">
+
+                    <div
+                        class="flex justify-between items-center border-b border-slate-700 pb-2">
+
+                        <span class="font-bold text-xs text-emerald-400">
+                            Human Reviewed
+                        </span>
+
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded">
+                            HUMAN
+                        </span>
+                    </div>
+
+                    <div id="comparison-human"></div>
+                </div>
+
+            </div>
+
+
+            <div
+                class="bg-gis-800 p-5 rounded-xl border border-slate-800">
+
+                <h3 class="text-sm font-bold text-white mb-3">
+                    Difference Analysis
+                </h3>
+
+                <div
+                    id="comparison-difference">
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             MANUAL INSPECTION
+        ================================================== -->
+        <section
+            id="view-manual"
+            class="hidden p-6 overflow-y-auto space-y-6 h-full">
+
+            <div class="flex justify-between items-center">
+
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        Field Manual Inspection Requests
+                    </h1>
+
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Ground-truth verification for unresolved parcel issues
+                    </p>
+                </div>
+
+                <button
+                    onclick="openManualModal()"
+                    class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-2 rounded-lg font-semibold flex items-center gap-1.5">
+
+                    <i
+                        data-lucide="plus-circle"
+                        class="w-4 h-4">
+                    </i>
+
+                    Dispatch New Inspection
+                </button>
+
+            </div>
+
+
+            <div
+                id="manual-panel"
+                class="space-y-3">
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             HISTORY
+        ================================================== -->
+        <section
+            id="view-history"
+            class="hidden p-6 overflow-y-auto space-y-6 h-full">
+
+            <div class="flex justify-between items-center">
+
+                <div>
+                    <h1 class="text-xl font-bold text-white">
+                        Audit History Log
+                    </h1>
+
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Full traceability of review actions
+                    </p>
+                </div>
+
+                <button
+                    onclick="clearAuditLog()"
+                    class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-2 rounded">
+                    Clear Demo Log
+                </button>
+
+            </div>
+
+
+            <div
+                id="audit-log-container"
+                class="bg-gis-800 p-4 rounded-xl border border-slate-800 space-y-3 font-mono text-xs">
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- =========================================================
+     RECEIVE MODAL
+========================================================= -->
+<div
+    id="modal-receive"
+    class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+
+    <div
+        class="bg-gis-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl relative">
+
+        <button
+            onclick="closeReceiveModal()"
+            class="absolute top-4 right-4 text-slate-400 hover:text-white">
+
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="text-center space-y-1">
+
+            <h3 class="text-lg font-bold text-white">
+                Field Device Sync
+            </h3>
+
+            <p class="text-xs text-slate-400">
+                Receive parcel data from the field phone
+            </p>
+
+        </div>
+
+
+        <div
+            class="bg-white p-4 rounded-xl w-48 h-48 mx-auto flex items-center justify-center border-4 border-sky-500 shadow-xl">
+
+            <div class="text-center">
+
+                <i
+                    data-lucide="qr-code"
+                    class="w-32 h-32 text-slate-900 mx-auto">
+                </i>
+
+                <span class="text-[10px] text-slate-600 font-mono font-bold">
+                    WORKSTATION-NODE-01
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="text-center text-xs text-slate-300">
+
+            <div
+                class="font-mono text-emerald-400">
+                Status: Waiting for incoming data...
+            </div>
+
+        </div>
+
+
+        <div
+            class="pt-2 border-t border-slate-700 flex gap-2">
+
+            <button
+                onclick="simulateIncomingParcel()"
+                class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2">
+
+                <i
+                    data-lucide="download-cloud"
+                    class="w-4 h-4">
+                </i>
+
+                Simulate Field Phone Payload
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     DECISION MODAL
+========================================================= -->
+<div
+    id="modal-decision"
+    class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+
+    <div
+        class="bg-gis-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+
+        <div>
+            <h3
+                id="decision-modal-title"
+                class="text-lg font-bold text-white">
+                Confirm Decision
+            </h3>
+
+            <p
+                id="decision-modal-subtitle"
+                class="text-xs text-slate-400 mt-1">
+                Record the reviewer decision.
+            </p>
+        </div>
+
+
+        <div class="space-y-3 text-xs">
+
+            <label class="block">
+
+                <span class="text-slate-400">
+                    Reason
+                </span>
+
+                <select
+                    id="decision-reason"
+                    class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white mt-1">
+
+                </select>
+
+            </label>
+
+
+            <label class="block">
+
+                <span class="text-slate-400">
+                    Reviewer Comments
+                </span>
+
+                <textarea
+                    id="decision-comment"
+                    class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white mt-1 h-24"
+                    placeholder="Add an explanation for the field device / audit record..."></textarea>
+
+            </label>
+
+        </div>
+
+
+        <div class="flex gap-2 pt-2">
+
+            <button
+                onclick="closeDecisionModal()"
+                class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded-lg text-xs">
+
+                Cancel
+            </button>
+
+            <button
+                id="confirm-decision-button"
+                onclick="confirmDecision()"
+                class="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded-lg text-xs">
+
+                Confirm
+            </button>
+
+        </div>
+
+    </div>
+</div>
+
+
+<!-- =========================================================
+     MANUAL INSPECTION MODAL
+========================================================= -->
+<div
+    id="modal-manual"
+    class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+
+    <div
+        class="bg-gis-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+
+            <i
+                data-lucide="user-check"
+                class="w-5 h-5 text-amber-400">
+            </i>
+
+            Dispatch Manual Ground Inspection
+
+        </h3>
+
+
+        <div class="space-y-3 text-xs">
+
+            <div>
+
+                <label class="text-slate-400">
+                    Inspection Reason
+                </label>
+
+                <select
+                    id="manual-reason"
+                    class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white mt-1">
+
+                    <option>Boundary Unclear</option>
+                    <option>Reference Cadastral Mismatch</option>
+                    <option>Severe Topology Issue</option>
+                    <option>Missing Attribute Data</option>
+                    <option>Image / Orthophoto Quality Problem</option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <label class="text-slate-400">
+                    Priority
+                </label>
+
+                <select
+                    id="manual-priority"
+                    class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white mt-1">
+
+                    <option>Normal</option>
+                    <option>High</option>
+                    <option>Critical</option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <label class="text-slate-400">
+                    Field Surveyor Instructions
+                </label>
+
+                <textarea
+                    id="manual-instructions"
+                    class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white mt-1 h-24"
+                    placeholder="Specify what needs to be physically verified..."></textarea>
+
+            </div>
+
+        </div>
+
+
+        <div class="flex gap-2 pt-2">
+
+            <button
+                onclick="submitManualInspection()"
+                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-lg text-xs">
+
+                Dispatch Request
+
+            </button>
+
+            <button
+                onclick="closeManualModal()"
+                class="flex-1 bg-slate-700 text-slate-300 py-2 rounded-lg text-xs">
+
+                Cancel
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     TRANSMIT MODAL
+========================================================= -->
+<div
+    id="modal-transmit"
+    class="hidden fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+
+    <div
+        class="bg-gis-800 border border-emerald-800 rounded-2xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl">
+
+        <div
+            class="w-12 h-12 bg-emerald-950 text-emerald-400 border border-emerald-700 rounded-full flex items-center justify-center mx-auto">
+
+            <i
+                data-lucide="send"
+                class="w-6 h-6 animate-bounce">
+            </i>
+
+        </div>
+
+
+        <h3 class="text-base font-bold text-white">
+            Sending Review Package
+        </h3>
+
+
+        <p class="text-xs text-slate-400">
+
+            Sending reviewed parcel package back to
+
+            <span
+                id="transmit-device"
+                class="text-white font-mono font-bold">
+                D-102
+            </span>
+
+        </p>
+
+
+        <div
+            class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-700">
+
+            <div
+                id="transmit-bar"
+                class="bg-emerald-500 h-full w-0 transition-all duration-300">
+            </div>
+
+        </div>
+
+
+        <div
+            id="transmit-status"
+            class="text-[11px] font-mono text-emerald-400">
+            Preparing package...
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     MAIN JAVASCRIPT
+========================================================= -->
+<script>
+
+    /* =========================================================
+       STATE
+    ========================================================== */
+
+    let map;
+
+    let aiLayer;
+    let refLayer;
+    let humanLayer;
+    let buildingLayer;
+    let roadLayer;
+
+    let satelliteLayer;
+    let streetLayer;
+
+    let activeParcelId = "PX-00124";
+
+    let editMode = false;
+    let addingVertex = false;
+
+    let editableMarkers = [];
+
+    let selectedDecision = null;
+
+    let currentDecisionType = null;
+
+
+    /* =========================================================
+       PARCEL DATA
+       Demo data structure ready for backend replacement
+    ========================================================== */
+
+    const parcelsData = {
+
+        "PX-00124": {
+
+            id: "PX-00124",
+
+            device: "D-102 (Mobile)",
+
+            source: "Drone Survey (ORI)",
+
+            area: 247.32,
+
+            referenceArea: 251.10,
+
+            perimeter: 64.21,
+
+            referencePerimeter: 65.02,
+
+            vertices: [
+
+                [77.5940, 12.9718],
+
+                [77.5945, 12.9718],
+
+                [77.5945, 12.9715],
+
+                [77.5940, 12.9715],
+
+                [77.5940, 12.9718]
+
+            ],
+
+            referenceVertices: [
+
+                [77.5939, 12.9719],
+
+                [77.5946, 12.9719],
+
+                [77.5946, 12.9714],
+
+                [77.5939, 12.9714],
+
+                [77.5939, 12.9719]
+
+            ],
+
+            human: [
+
+                [77.5940, 12.9718],
+
+                [77.5945, 12.9718],
+
+                [77.5945, 12.9714],
+
+                [77.5940, 12.9714],
+
+                [77.5940, 12.9718]
+
+            ],
+
+            buildings: [
+
+                [
+                    [77.59410, 12.97172],
+                    [77.59432, 12.97172],
+                    [77.59432, 12.97157],
+                    [77.59410, 12.97157],
+                    [77.59410, 12.97172]
+                ]
+
+            ],
+
+            roads: [
+
+                [
+                    [77.5937, 12.97144],
+                    [77.5948, 12.97144]
+                ]
+
+            ],
+
+            aiConfidence: 91.2,
+
+            crs: "EPSG:4326 / WGS84",
+
+            captureDate: "19-Sep-2026",
+
+            referenceId: "CAD-8841",
+
+            decision: null,
+
+            decisionReason: "",
+
+            decisionComment: "",
+
+            manualInspection: null,
+
+            history: []
+
+        },
+
+
+        "PX-00123": {
+
+            id: "PX-00123",
+
+            device: "D-102 (Mobile)",
+
+            source: "Drone Survey (ORI)",
+
+            area: 312.10,
+
+            referenceArea: 313.20,
+
+            perimeter: 70.22,
+
+            referencePerimeter: 70.61,
+
+            vertices: [
+
+                [77.5936, 12.9722],
+
+                [77.5942, 12.9722],
+
+                [77.5942, 12.9718],
+
+                [77.5936, 12.9718],
+
+                [77.5936, 12.9722]
+
+            ],
+
+            referenceVertices: [
+
+                [77.59355, 12.97222],
+
+                [77.59425, 12.97222],
+
+                [77.59425, 12.97178],
+
+                [77.59355, 12.97178],
+
+                [77.59355, 12.97222]
+
+            ],
+
+            human: null,
+
+            buildings: [
+
+                [
+                    [77.59372, 12.97212],
+                    [77.59404, 12.97212],
+                    [77.59404, 12.97192],
+                    [77.59372, 12.97192],
+                    [77.59372, 12.97212]
+                ]
+
+            ],
+
+            roads: [],
+
+            aiConfidence: 95.4,
+
+            crs: "EPSG:4326 / WGS84",
+
+            captureDate: "19-Sep-2026",
+
+            referenceId: "CAD-8840",
+
+            decision: "APPROVED",
+
+            decisionReason: "All required technical checks passed",
+
+            decisionComment: "Reviewed and approved.",
+
+            manualInspection: null,
+
+            history: []
+
+        },
+
+
+        "PX-00122": {
+
+            id: "PX-00122",
+
+            device: "D-105 (Mobile)",
+
+            source: "Imported GIS",
+
+            area: 189.50,
+
+            referenceArea: 201.80,
+
+            perimeter: 61.20,
+
+            referencePerimeter: 67.22,
+
+            vertices: [
+
+                [77.5928, 12.9712],
+
+                [77.5934, 12.9712],
+
+                [77.5934, 12.9708],
+
+                [77.5928, 12.9708],
+
+                [77.5928, 12.9712]
+
+            ],
+
+            referenceVertices: [
+
+                [77.5927, 12.97125],
+
+                [77.5935, 12.97125],
+
+                [77.5935, 12.97075],
+
+                [77.5927, 12.97075],
+
+                [77.5927, 12.97125]
+
+            ],
+
+            human: null,
+
+            buildings: [
+
+                [
+                    [77.59288, 12.97110],
+                    [77.59320, 12.97110],
+                    [77.59320, 12.97090],
+                    [77.59288, 12.97090],
+                    [77.59288, 12.97110]
+                ]
+
+            ],
+
+            roads: [],
+
+            aiConfidence: 62.0,
+
+            crs: "EPSG:4326 / WGS84",
+
+            captureDate: "19-Sep-2026",
+
+            referenceId: "CAD-8839",
+
+            decision: "MANUAL INSPECTION",
+
+            decisionReason: "Low AI confidence",
+
+            decisionComment: "Physical boundary verification required.",
+
+            manualInspection: {
+
+                reason: "Boundary Unclear",
+
+                priority: "High",
+
+                instructions: "Verify eastern boundary markers on site."
+
+            },
+
+            history: []
+
+        },
+
+
+        "PX-00121": {
+
+            id: "PX-00121",
+
+            device: "D-104 (Mobile)",
+
+            source: "Drone Survey (ORI)",
+
+            area: 220.62,
+
+            referenceArea: 220.80,
+
+            perimeter: 61.11,
+
+            referencePerimeter: 61.20,
+
+            vertices: [
+
+                [77.5950, 12.9724],
+
+                [77.5957, 12.9724],
+
+                [77.5957, 12.9720],
+
+                [77.5950, 12.9720],
+
+                [77.5950, 12.9724]
+
+            ],
+
+            referenceVertices: [
+
+                [77.59495, 12.97242],
+
+                [77.59575, 12.97242],
+
+                [77.59575, 12.97198],
+
+                [77.59495, 12.97198],
+
+                [77.59495, 12.97242]
+
+            ],
+
+            human: null,
+
+            buildings: [],
+
+            roads: [],
+
+            aiConfidence: 88.9,
+
+            crs: "EPSG:4326 / WGS84",
+
+            captureDate: "19-Sep-2026",
+
+            referenceId: "CAD-8838",
+
+            decision: null,
+
+            decisionReason: "",
+
+            decisionComment: "",
+
+            manualInspection: null,
+
+            history: []
+
+        }
+
+    };
+
+
+    /* =========================================================
+       INITIALIZATION
+    ========================================================== */
+
+    document.addEventListener("DOMContentLoaded", () => {
+
+        lucide.createIcons();
+
+        initMap();
+
+        renderAll();
+
+        runValidation();
+
+    });
+
+
+    /* =========================================================
+       MAP INITIALIZATION
+    ========================================================== */
+
+    function initMap() {
+
+        map = L.map("map", {
+            zoomControl: false
+        }).setView(
+            [12.97165, 77.59425],
+            19
+        );
+
+
+        /* Satellite */
+        satelliteLayer = L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            {
+                attribution: "Esri World Imagery",
+                maxZoom: 20
+            }
+        );
+
+
+        /* Street */
+        streetLayer = L.tileLayer(
+            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {
+                attribution: "&copy; OpenStreetMap contributors",
+                maxZoom: 20
+            }
+        );
+
+
+        satelliteLayer.addTo(map);
+
+        L.control.zoom({
+            position: "bottomright"
+        }).addTo(map);
+
+
+        aiLayer = L.layerGroup().addTo(map);
+
+        refLayer = L.layerGroup().addTo(map);
+
+        humanLayer = L.layerGroup().addTo(map);
+
+        buildingLayer = L.layerGroup().addTo(map);
+
+        roadLayer = L.layerGroup().addTo(map);
+
+
+        loadParcelLayers(activeParcelId);
+
+    }
+
+
+    /* =========================================================
+       BASE MAP SWITCH
+    ========================================================== */
+
+    function setBaseMap(type) {
+
+        if (type === "satellite") {
+
+            if (map.hasLayer(streetLayer)) {
+                map.removeLayer(streetLayer);
+            }
+
+            if (!map.hasLayer(satelliteLayer)) {
+                satelliteLayer.addTo(map);
+            }
+
+            document.getElementById("btn-satellite").className =
+                "px-2.5 py-1 rounded text-xs font-medium bg-sky-950 text-sky-400 border border-sky-800";
+
+            document.getElementById("btn-street").className =
+                "px-2.5 py-1 rounded text-xs font-medium bg-slate-700 text-slate-300 border border-slate-600";
+
+        }
+
+        if (type === "street") {
+
+            if (map.hasLayer(satelliteLayer)) {
+                map.removeLayer(satelliteLayer);
+            }
+
+            if (!map.hasLayer(streetLayer)) {
+                streetLayer.addTo(map);
+            }
+
+            document.getElementById("btn-street").className =
+                "px-2.5 py-1 rounded text-xs font-medium bg-sky-950 text-sky-400 border border-sky-800";
+
+            document.getElementById("btn-satellite").className =
+                "px-2.5 py-1 rounded text-xs font-medium bg-slate-700 text-slate-300 border border-slate-600";
+
+        }
+
+    }
+
+
+    /* =========================================================
+       LOAD GIS LAYERS
+    ========================================================== */
+
+    function loadParcelLayers(parcelId) {
+
+        aiLayer.clearLayers();
+
+        refLayer.clearLayers();
+
+        humanLayer.clearLayers();
+
+        buildingLayer.clearLayers();
+
+        roadLayer.clearLayers();
+
+
+        const data =
+            parcelsData[parcelId] ||
+            parcelsData["PX-00124"];
+
+
+        /* AI CANDIDATE */
+        L.polygon(
+            data.vertices.map(p => [p[1], p[0]]),
+            {
+                color: "#ef4444",
+                weight: 3,
+                fillColor: "#ef4444",
+                fillOpacity: 0.20
+            }
+        ).addTo(aiLayer);
+
+
+        /* CADASTRAL REFERENCE */
+        L.polygon(
+            data.referenceVertices.map(p => [p[1], p[0]]),
+            {
+                color: "#3b82f6",
+                weight: 3,
+                dashArray: "8,6",
+                fillColor: "#3b82f6",
+                fillOpacity: 0.10
+            }
+        ).addTo(refLayer);
+
+
+        /* HUMAN EDITED */
+        if (data.human && data.human.length >= 4) {
+
+            L.polygon(
+                data.human.map(p => [p[1], p[0]]),
+                {
+                    color: "#10b981",
+                    weight: 3,
+                    dashArray: "3,5",
+                    fillColor: "#10b981",
+                    fillOpacity: 0.18
+                }
+            ).addTo(humanLayer);
+
+        }
+
+
+        /* BUILDINGS */
+        (data.buildings || []).forEach(building => {
+
+            L.polygon(
+                building.map(p => [p[1], p[0]]),
+                {
+                    color: "#f59e0b",
+                    weight: 2,
+                    fillColor: "#f59e0b",
+                    fillOpacity: 0.25
+                }
+            ).addTo(buildingLayer);
+
+        });
+
+
+        /* ROADS */
+        (data.roads || []).forEach(road => {
+
+            L.polyline(
+                road.map(p => [p[1], p[0]]),
+                {
+                    color: "#f8fafc",
+                    weight: 5,
+                    opacity: .60
+                }
+            ).addTo(roadLayer);
+
+        });
+
+
+        const bounds = L.latLngBounds(
+            data.vertices.map(p => [p[1], p[0]])
+        );
+
+        map.fitBounds(
+            bounds,
+            {
+                padding: [60, 60]
+            }
+        );
+
+
+        if (editMode) {
+            createEditableMarkers();
+        }
+
+    }
+
+
+    /* =========================================================
+       LAYER TOGGLES
+    ========================================================== */
+
+    function toggleLayer(type) {
+
+        let layer;
+        let button;
+
+        if (type === "ai") {
+            layer = aiLayer;
+            button = document.getElementById("toggle-ai");
+        }
+
+        if (type === "ref") {
+            layer = refLayer;
+            button = document.getElementById("toggle-ref");
+        }
+
+        if (type === "human") {
+            layer = humanLayer;
+            button = document.getElementById("toggle-human");
+        }
+
+
+        if (!layer) return;
+
+
+        if (map.hasLayer(layer)) {
+
+            map.removeLayer(layer);
+
+            button.textContent =
+                button.textContent.replace("☑", "☐");
+
+        } else {
+
+            layer.addTo(map);
+
+            button.textContent =
+                button.textContent.replace("☐", "☑");
+
+        }
+
+    }
+
+
+    /* =========================================================
+       NAVIGATION
+    ========================================================== */
+
+    function switchView(viewName) {
+
+        document
+            .querySelectorAll("main > section")
+            .forEach(sec => sec.classList.add("hidden"));
+
+
+        document
+            .querySelectorAll(".tab-btn")
+            .forEach(btn => btn.classList.remove("active"));
+
+
+        const target =
+            document.getElementById(`view-${viewName}`);
+
+        if (target) {
+            target.classList.remove("hidden");
+        }
+
+
+        const activeBtn =
+            document.getElementById(`nav-${viewName}`);
+
+        if (activeBtn) {
+            activeBtn.classList.add("active");
+        }
+
+
+        if (viewName === "viewer" && map) {
+
+            setTimeout(() => {
+
+                map.invalidateSize();
+
+                loadParcelLayers(activeParcelId);
+
+            }, 150);
+
+        }
+
+
+        if (viewName === "validation") {
+            runValidation();
+        }
+
+        if (viewName === "reference") {
+            renderReference();
+        }
+
+        if (viewName === "comparison") {
+            renderComparison();
+        }
+
+        if (viewName === "manual") {
+            renderManualPanel();
+        }
+
+    }
+
+
+    /* =========================================================
+       SELECT PARCEL
+    ========================================================== */
+
+    function selectParcel(id) {
+
+        if (!parcelsData[id]) return;
+
+        activeParcelId = id;
+
+        selectedDecision =
+            parcelsData[id].decision || null;
+
+
+        document.getElementById("top-parcel-id").textContent = id;
+
+        document.getElementById("top-device-id").textContent =
+            parcelsData[id].device;
+
+
+        updateTopStatus();
+
+        loadParcelLayers(id);
+
+        renderAll();
+
+        switchView("viewer");
+
+        addAuditLog(
+            id,
+            "Parcel selected for human review"
+        );
+
+    }
+
+
+    /* =========================================================
+       EDIT MODE
+    ========================================================== */
+
+    function toggleEditMode() {
+
+        editMode = !editMode;
+
+        const button =
+            document.getElementById("edit-button");
+
+
+        if (editMode) {
+
+            button.classList.remove("bg-slate-700");
+
+            button.classList.add(
+                "bg-sky-600",
+                "text-white"
+            );
+
+            createEditableMarkers();
+
+            addAuditLog(
+                activeParcelId,
+                "Geometry edit mode enabled"
+            );
+
+        } else {
+
+            button.classList.remove(
+                "bg-sky-600"
+            );
+
+            button.classList.add(
+                "bg-slate-700"
+            );
+
+            removeEditableMarkers();
+
+            addAuditLog(
+                activeParcelId,
+                "Geometry edit mode disabled"
+            );
+
+        }
+
+    }
+
+
+    function createEditableMarkers() {
+
+        removeEditableMarkers();
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        data.vertices.forEach(
+            (coord, index) => {
+
+                const marker =
+                    L.marker(
+                        [coord[1], coord[0]],
+                        {
+                            draggable: true,
+                            icon: L.divIcon({
+                                className: "",
+                                html: `<div class="vertex-marker"></div>`,
+                                iconSize: [11,11],
+                                iconAnchor: [5,5]
+                            })
+                        }
+                    ).addTo(map);
+
+
+                marker.on(
+                    "dragend",
+                    function(event) {
+
+                        const position =
+                            event.target.getLatLng();
+
+
+                        data.vertices[index] = [
+                            position.lng,
+                            position.lat
+                        ];
+
+
+                        data.human =
+                            data.vertices.map(
+                                p => [...p]
+                            );
+
+
+                        loadParcelLayers(
+                            activeParcelId
+                        );
+
+
+                        if (editMode) {
+                            createEditableMarkers();
+                        }
+
+
+                        recalculateGeometry();
+
+                        addAuditLog(
+                            activeParcelId,
+                            `Vertex ${index + 1} moved by reviewer`
+                        );
+
+                    }
+                );
+
+
+                editableMarkers.push(marker);
+
+            }
+        );
+
+    }
+
+
+    function removeEditableMarkers() {
+
+        editableMarkers.forEach(
+            marker => map.removeLayer(marker)
+        );
+
+        editableMarkers = [];
+
+    }
+
+
+    /* =========================================================
+       ADD VERTEX
+    ========================================================== */
+
+    function addVertexMode() {
+
+        if (!editMode) {
+
+            alert(
+                "Enable Edit Geometry first."
+            );
+
+            return;
+        }
+
+
+        addingVertex = true;
+
+        alert(
+            "Click anywhere on the map to add a new parcel vertex."
+        );
+
+
+        map.once(
+            "click",
+            function(event) {
+
+                if (!addingVertex) return;
+
+                const data =
+                    parcelsData[activeParcelId];
+
+
+                data.vertices.splice(
+                    data.vertices.length - 1,
+                    0,
+                    [
+                        event.latlng.lng,
+                        event.latlng.lat
+                    ]
+                );
+
+
+                data.human =
+                    data.vertices.map(
+                        p => [...p]
+                    );
+
+
+                addingVertex = false;
+
+
+                loadParcelLayers(
+                    activeParcelId
+                );
+
+
+                createEditableMarkers();
+
+                recalculateGeometry();
+
+                addAuditLog(
+                    activeParcelId,
+                    "New parcel vertex added"
+                );
+
+            }
+        );
+
+    }
+
+
+    /* =========================================================
+       DELETE VERTEX
+    ========================================================== */
+
+    function deleteLastVertex() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        if (data.vertices.length <= 4) {
+
+            alert(
+                "A polygon needs at least 3 unique vertices."
+            );
+
+            return;
+        }
+
+
+        data.vertices.splice(
+            data.vertices.length - 2,
+            1
+        );
+
+
+        data.vertices[
+            data.vertices.length - 1
+        ] = [
+            ...data.vertices[0]
+        ];
+
+
+        data.human =
+            data.vertices.map(
+                p => [...p]
+            );
+
+
+        loadParcelLayers(
+            activeParcelId
+        );
+
+
+        if (editMode) {
+            createEditableMarkers();
+        }
+
+
+        recalculateGeometry();
+
+        addAuditLog(
+            activeParcelId,
+            "Last parcel vertex deleted"
+        );
+
+    }
+
+
+    /* =========================================================
+       GEOMETRY CALCULATION
+    ========================================================== */
+
+    function getPolygonFeature(data) {
+
+        let coords =
+            data.vertices.map(
+                p => [...p]
+            );
+
+
+        if (
+            coords[0][0] !== coords[coords.length - 1][0] ||
+            coords[0][1] !== coords[coords.length - 1][1]
+        ) {
+            coords.push(
+                [...coords[0]]
+            );
+        }
+
+
+        return turf.polygon([
+            coords
+        ]);
+
+    }
+
+
+    function calculateArea(data) {
+
+        return turf.area(
+            getPolygonFeature(data)
+        );
+
+    }
+
+
+    function calculatePerimeter(data) {
+
+        const polygon =
+            getPolygonFeature(data);
+
+
+        const ring =
+            polygon.geometry.coordinates[0];
+
+
+        return turf.length(
+            turf.lineString(ring),
+            {
+                units: "meters"
+            }
+        );
+
+    }
+
+
+    function recalculateGeometry() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        data.area =
+            Number(
+                calculateArea(data).toFixed(2)
+            );
+
+
+        data.perimeter =
+            Number(
+                calculatePerimeter(data).toFixed(2)
+            );
+
+
+        renderAll();
+
+    }
+
+
+    /* =========================================================
+       VALIDATION ENGINE
+    ========================================================== */
+
+    function performValidation(data) {
+
+        const polygon =
+            getPolygonFeature(data);
+
+
+        const area =
+            calculateArea(data);
+
+
+        const perimeter =
+            calculatePerimeter(data);
+
+
+        let selfIntersection = false;
+
+        try {
+
+            const kinks =
+                turf.kinks(polygon);
+
+            selfIntersection =
+                kinks.features.length > 0;
+
+        } catch (error) {
+
+            selfIntersection = false;
+
+        }
+
+
+        let referenceOverlap = false;
+
+        try {
+
+            const ref =
+                turf.polygon([
+                    data.referenceVertices
+                ]);
+
+            const intersection =
+                turf.intersect(
+                    polygon,
+                    ref
+                );
+
+            referenceOverlap =
+                !!intersection;
+
+        } catch (error) {
+
+            referenceOverlap = false;
+
+        }
+
+
+        const areaDifference =
+            Math.abs(
+                area - data.referenceArea
+            );
+
+
+        const areaDifferencePercent =
+            (
+                areaDifference /
+                data.referenceArea
+            ) * 100;
+
+
+        const perimeterDifferencePercent =
+            (
+                Math.abs(
+                    perimeter -
+                    data.referencePerimeter
+                ) /
+                data.referencePerimeter
+            ) * 100;
+
+
+        const aiPass =
+            data.aiConfidence >= 85;
+
+
+        const geometryPass =
+            !selfIntersection &&
+            data.vertices.length >= 4;
+
+
+        const referencePass =
+            areaDifferencePercent <= 5;
+
+
+        let score = 100;
+
+
+        if (!geometryPass) {
+            score -= 30;
+        }
+
+        if (selfIntersection) {
+            score -= 25;
+        }
+
+        if (areaDifferencePercent > 2) {
+            score -= 10;
+        }
+
+        if (areaDifferencePercent > 5) {
+            score -= 15;
+        }
+
+        if (perimeterDifferencePercent > 5) {
+            score -= 10;
+        }
+
+        if (!aiPass) {
+            score -= 15;
+        }
+
+
+        score =
+            Math.max(
+                0,
+                Math.round(score)
+            );
+
+
+        const checks = [
+
+            {
+                category: "Geometry",
+                name: "Polygon closed",
+                pass: data.vertices.length >= 4,
+                value: data.vertices.length >= 4
+                    ? "PASS"
+                    : "FAIL",
+                detail: data.vertices.length >= 4
+                    ? "Closed polygon ring available."
+                    : "Insufficient geometry vertices."
+            },
+
+            {
+                category: "Geometry",
+                name: "No self-intersection",
+                pass: !selfIntersection,
+                value: !selfIntersection
+                    ? "PASS"
+                    : "FAIL",
+                detail: !selfIntersection
+                    ? "No crossing polygon edges detected."
+                    : "Polygon edges intersect."
+            },
+
+            {
+                category: "Geometry",
+                name: "Valid vertex structure",
+                pass: data.vertices.length >= 4,
+                value: data.vertices.length >= 4
+                    ? "PASS"
+                    : "FAIL",
+                detail:
+                    `${data.vertices.length} coordinate nodes supplied.`
+            },
+
+            {
+                category: "Topology",
+                name: "Reference relationship",
+                pass: true,
+                warning: referenceOverlap,
+                value: referenceOverlap
+                    ? "WARNING"
+                    : "PASS",
+                detail: referenceOverlap
+                    ? "Candidate and cadastral reference overlap — human interpretation required."
+                    : "No special overlap warning detected in this demo."
+            },
+
+            {
+                category: "Reference",
+                name: "Area difference",
+                pass: areaDifferencePercent <= 2,
+                warning:
+                    areaDifferencePercent > 2 &&
+                    areaDifferencePercent <= 5,
+                value:
+                    areaDifferencePercent <= 2
+                        ? "PASS"
+                        : areaDifferencePercent <= 5
+                            ? "WARNING"
+                            : "FAIL",
+                detail:
+                    `${areaDifference.toFixed(2)} m² difference (${areaDifferencePercent.toFixed(2)}%).`
+            },
+
+            {
+                category: "Reference",
+                name: "Perimeter difference",
+                pass: perimeterDifferencePercent <= 2,
+                warning:
+                    perimeterDifferencePercent > 2 &&
+                    perimeterDifferencePercent <= 5,
+                value:
+                    perimeterDifferencePercent <= 2
+                        ? "PASS"
+                        : perimeterDifferencePercent <= 5
+                            ? "WARNING"
+                            : "FAIL",
+                detail:
+                    `${perimeterDifferencePercent.toFixed(2)}% perimeter difference.`
+            },
+
+            {
+                category: "AI Quality",
+                name: "AI confidence",
+                pass: aiPass,
+                warning:
+                    data.aiConfidence >= 75 &&
+                    data.aiConfidence < 85,
+                value:
+                    data.aiConfidence >= 85
+                        ? "PASS"
+                        : data.aiConfidence >= 75
+                            ? "WARNING"
+                            : "FAIL",
+                detail:
+                    `${data.aiConfidence.toFixed(1)}% model confidence.`
+            },
+
+            {
+                category: "Spatial Reference",
+                name: "CRS available",
+                pass: !!data.crs,
+                value: data.crs
+                    ? "PASS"
+                    : "FAIL",
+                detail:
+                    data.crs ||
+                    "Missing spatial reference."
+            },
+
+            {
+                category: "Attributes",
+                name: "Reference ID available",
+                pass: !!data.referenceId,
+                value: data.referenceId
+                    ? "PASS"
+                    : "FAIL",
+                detail:
+                    data.referenceId ||
+                    "Reference identifier unavailable."
+            }
+
+        ];
+
+
+        return {
+
+            area,
+
+            perimeter,
+
+            areaDifference,
+
+            areaDifferencePercent,
+
+            perimeterDifferencePercent,
+
+            score,
+
+            checks,
+
+            overall:
+                score >= 90
+                    ? "VALID"
+                    : score >= 70
+                        ? "NEEDS REVIEW"
+                        : "MANUAL INSPECTION"
+
+        };
+
+    }
+
+
+    /* =========================================================
+       RUN VALIDATION
+    ========================================================== */
+
+    function runValidation() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const result =
+            performValidation(data);
+
+
+        document.getElementById(
+            "qa-score"
+        ).textContent =
+            `${result.score}%`;
+
+
+        document.getElementById(
+            "qa-score"
+        ).className =
+            result.score >= 90
+                ? "text-2xl font-black text-emerald-400"
+                : result.score >= 70
+                    ? "text-2xl font-black text-amber-400"
+                    : "text-2xl font-black text-rose-400";
+
+
+        const statusEl =
+            document.getElementById(
+                "qa-status"
+            );
+
+
+        if (result.overall === "VALID") {
+
+            statusEl.textContent =
+                "TECHNICALLY VALID";
+
+            statusEl.className =
+                "bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-1 rounded";
+
+        } else if (result.overall === "NEEDS REVIEW") {
+
+            statusEl.textContent =
+                "NEEDS HUMAN REVIEW";
+
+            statusEl.className =
+                "bg-amber-950 text-amber-400 border border-amber-800 text-[10px] font-bold px-2 py-1 rounded";
+
+        } else {
+
+            statusEl.textContent =
+                "MANUAL INSPECTION";
+
+            statusEl.className =
+                "bg-rose-950 text-rose-400 border border-rose-800 text-[10px] font-bold px-2 py-1 rounded";
+
+        }
+
+
+        document.getElementById(
+            "validation-subtitle"
+        ).textContent =
+            `Technical QA report for Parcel ${data.id}`;
+
+
+        renderValidationCards(
+            result.checks
+        );
+
+
+        let explanation =
+            "No major technical issue was detected.";
+
+        const failedChecks =
+            result.checks.filter(
+                c => !c.pass && !c.warning
+            );
+
+        const warningChecks =
+            result.checks.filter(
+                c => c.warning
+            );
+
+
+        if (failedChecks.length > 0) {
+
+            explanation =
+                failedChecks
+                    .map(
+                        c => `${c.name}: ${c.detail}`
+                    )
+                    .join(" ");
+
+        } else if (warningChecks.length > 0) {
+
+            explanation =
+                warningChecks
+                    .map(
+                        c => `${c.name}: ${c.detail}`
+                    )
+                    .join(" ");
+
+        }
+
+
+        document.getElementById(
+            "explain-why"
+        ).textContent =
+            explanation;
+
+
+        const problemText =
+            document.getElementById(
+                "problem-text"
+            );
+
+
+        if (result.overall === "VALID") {
+
+            problemText.textContent =
+                "Technical validation passed. Human review can still compare the candidate with the cadastral reference before approval.";
+
+        } else {
+
+            problemText.textContent =
+                failedChecks.length > 0
+                    ? failedChecks[0].detail
+                    : warningChecks.length > 0
+                        ? warningChecks[0].detail
+                        : "Human review required.";
+
+        }
+
+
+        return result;
+
+    }
+
+
+    /* =========================================================
+       VALIDATION CARDS
+    ========================================================== */
+
+    function renderValidationCards(checks) {
+
+        const groups = {};
+
+        checks.forEach(
+            check => {
+
+                if (!groups[check.category]) {
+                    groups[check.category] = [];
+                }
+
+                groups[check.category].push(
+                    check
+                );
+
+            }
+        );
+
+
+        document.getElementById(
+            "validation-grid"
+        ).innerHTML =
+            Object.entries(groups)
+                .map(
+                    ([category, list]) => {
+
+                        const icon =
+                            category === "Geometry"
+                                ? "hexagon"
+                                : category === "Topology"
+                                    ? "git-fork"
+                                    : category === "Reference"
+                                        ? "database"
+                                        : category === "AI Quality"
+                                            ? "brain-circuit"
+                                            : category === "Spatial Reference"
+                                                ? "globe"
+                                                : "file-check";
+
+
+                        return `
+
+                        <div class="bg-gis-800 p-4 rounded-xl border border-slate-800 space-y-3">
+
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-700 pb-2">
+
+                                <i data-lucide="${icon}" class="w-4 h-4 text-sky-400"></i>
+
+                                ${category}
+
+                            </h3>
+
+                            <ul class="space-y-2 text-xs">
+
+                                ${list.map(
+                                    c => {
+
+                                        const color =
+                                            c.value === "PASS"
+                                                ? "text-emerald-400"
+                                                : c.value === "WARNING"
+                                                    ? "text-amber-400"
+                                                    : "text-rose-400";
+
+
+                                        return `
+
+                                        <li class="flex items-start justify-between gap-4 ${color}">
+
+                                            <div>
+
+                                                <div class="font-medium">
+                                                    ${c.value === "PASS" ? "✓" : c.value === "WARNING" ? "⚠" : "✕"}
+                                                    ${c.name}
+                                                </div>
+
+                                                <div class="text-[10px] text-slate-500 mt-0.5">
+                                                    ${c.detail}
+                                                </div>
+
+                                            </div>
+
+                                            <span class="font-mono text-[10px] shrink-0">
+                                                ${c.value}
+                                            </span>
+
+                                        </li>
+
+                                        `;
+
+                                    }
+                                ).join("")}
+
+                            </ul>
+
+                        </div>
+
+                        `;
+
+                    }
+                )
+                .join("");
+
+
+        lucide.createIcons();
+
+    }
+
+
+    /* =========================================================
+       TOP STATUS
+    ========================================================== */
+
+    function updateTopStatus() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const status =
+            data.decision ||
+            "UNDER REVIEW";
+
+
+        const element =
+            document.getElementById(
+                "top-parcel-status"
+            );
+
+
+        element.textContent =
+            status;
+
+
+        if (status === "APPROVED") {
+
+            element.className =
+                "bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider";
+
+        } else if (status === "REJECTED") {
+
+            element.className =
+                "bg-orange-950 text-orange-400 border border-orange-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider";
+
+        } else if (status === "MANUAL INSPECTION") {
+
+            element.className =
+                "bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider";
+
+        } else if (status === "DENIED") {
+
+            element.className =
+                "bg-rose-950 text-rose-400 border border-rose-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider";
+
+        } else {
+
+            element.className =
+                "bg-amber-950/80 text-amber-400 border border-amber-800 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wider";
+
+        }
+
+
+        updateDecisionDisplay();
+
+    }
+
+
+    /* =========================================================
+       DECISION DISPLAY
+    ========================================================== */
+
+    function updateDecisionDisplay() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const display =
+            document.getElementById(
+                "decision-display"
+            );
+
+
+        const text =
+            document.getElementById(
+                "decision-text"
+            );
+
+
+        const subtext =
+            document.getElementById(
+                "decision-subtext"
+            );
+
+
+        if (!data.decision) {
+
+            display.className =
+                "decision-banner bg-slate-900 border border-slate-700 rounded-lg p-3";
+
+
+            text.textContent =
+                "NOT DECIDED";
+
+            text.className =
+                "text-sm font-black text-amber-400 mt-1";
+
+            subtext.textContent =
+                "Complete validation and select a workflow.";
+
+            return;
+
+        }
+
+
+        text.textContent =
+            data.decision;
+
+
+        if (
+            data.decision === "APPROVED"
+        ) {
+
+            display.className =
+                "decision-banner decision-selected bg-emerald-950/30 border border-emerald-800 rounded-lg p-3";
+
+            text.className =
+                "text-sm font-black text-emerald-400 mt-1";
+
+        }
+
+        else if (
+            data.decision === "REJECTED"
+        ) {
+
+            display.className =
+                "decision-banner decision-selected bg-orange-950/30 border border-orange-800 rounded-lg p-3";
+
+            text.className =
+                "text-sm font-black text-orange-400 mt-1";
+
+        }
+
+        else if (
+            data.decision === "MANUAL INSPECTION"
+        ) {
+
+            display.className =
+                "decision-banner decision-selected bg-amber-950/30 border border-amber-800 rounded-lg p-3";
+
+            text.className =
+                "text-sm font-black text-amber-400 mt-1";
+
+        }
+
+        else if (
+            data.decision === "DENIED"
+        ) {
+
+            display.className =
+                "decision-banner decision-selected bg-rose-950/30 border border-rose-800 rounded-lg p-3";
+
+            text.className =
+                "text-sm font-black text-rose-400 mt-1";
+
+        }
+
+
+        subtext.innerHTML =
+            `<strong>Reason:</strong> ${data.decisionReason || "Not specified"}<br>
+             <strong>Comment:</strong> ${data.decisionComment || "None"}`;
+
+    }
+
+
+    /* =========================================================
+       DECISION MODAL
+    ========================================================== */
+
+    function openDecisionModal(type) {
+
+        currentDecisionType = type;
+
+
+        const title =
+            document.getElementById(
+                "decision-modal-title"
+            );
+
+        const subtitle =
+            document.getElementById(
+                "decision-modal-subtitle"
+            );
+
+        const reasonSelect =
+            document.getElementById(
+                "decision-reason"
+            );
+
+
+        const confirmButton =
+            document.getElementById(
+                "confirm-decision-button"
+            );
+
+
+        const reasons = {
+
+            APPROVE: [
+                "All required QA checks passed",
+                "Human review accepted candidate",
+                "Reference comparison acceptable",
+                "Geometry manually corrected and verified"
+            ],
+
+            REJECT: [
+                "Boundary needs correction",
+                "Topology issue requires correction",
+                "Reference mismatch requires correction",
+                "AI-generated geometry unsuitable",
+                "Return to field device for correction"
+            ],
+
+            DENY: [
+                "Invalid geometry",
+                "Insufficient source data",
+                "Severe topology failure",
+                "Reference conflict cannot be resolved",
+                "Unsupported / unreliable input"
+            ]
+
+        };
+
+
+        title.textContent =
+            type === "APPROVE"
+                ? "Approve Parcel"
+                : type === "REJECT"
+                    ? "Reject / Return Parcel"
+                    : "Deny Parcel";
+
+
+        subtitle.textContent =
+            type === "APPROVE"
+                ? "The reviewed parcel will be marked approved and prepared for return to the field device."
+                : type === "REJECT"
+                    ? "The field device will receive a correction-required status."
+                    : "The parcel will be marked denied and the reason will be recorded in the audit trail.";
+
+
+        reasonSelect.innerHTML =
+            reasons[type]
+                .map(
+                    reason =>
+                        `<option>${reason}</option>`
+                )
+                .join("");
+
+
+        confirmButton.className =
+            type === "APPROVE"
+                ? "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs"
+                : type === "REJECT"
+                    ? "flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 rounded-lg text-xs"
+                    : "flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-lg text-xs";
+
+
+        confirmButton.textContent =
+            type === "APPROVE"
+                ? "Confirm Approval"
+                : type === "REJECT"
+                    ? "Confirm Rejection"
+                    : "Confirm Denial";
+
+
+        document.getElementById(
+            "decision-comment"
+        ).value = "";
+
+
+        document.getElementById(
+            "modal-decision"
+        ).classList.remove(
+            "hidden"
+        );
+
+    }
+
+
+    function closeDecisionModal() {
+
+        document.getElementById(
+            "modal-decision"
+        ).classList.add(
+            "hidden"
+        );
+
+    }
+
+
+    /* =========================================================
+       CONFIRM DECISION
+    ========================================================== */
+
+    function confirmDecision() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const reason =
+            document.getElementById(
+                "decision-reason"
+            ).value;
+
+
+        const comment =
+            document.getElementById(
+                "decision-comment"
+            ).value.trim();
+
+
+        data.decision =
+            currentDecisionType === "APPROVE"
+                ? "APPROVED"
+                : currentDecisionType === "REJECT"
+                    ? "REJECTED"
+                    : "DENIED";
+
+
+        data.decisionReason =
+            reason;
+
+
+        data.decisionComment =
+            comment ||
+            "No additional comment.";
+
+
+        data.decisionTime =
+            new Date().toISOString();
+
+
+        addAuditLog(
+            activeParcelId,
+            `${data.decision}: ${reason}`
+        );
+
+
+        closeDecisionModal();
+
+
+        selectedDecision =
+            data.decision;
+
+
+        updateTopStatus();
+
+        renderAll();
+
+
+        startTransmit(
+            data.decision
+        );
+
+    }
+
+
+    /* =========================================================
+       MANUAL INSPECTION
+    ========================================================== */
+
+    function openManualModal() {
+
+        document.getElementById(
+            "modal-manual"
+        ).classList.remove(
+            "hidden"
+        );
+
+    }
+
+
+    function closeManualModal() {
+
+        document.getElementById(
+            "modal-manual"
+        ).classList.add(
+            "hidden"
+        );
+
+    }
+
+
+    function submitManualInspection() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        data.decision =
+            "MANUAL INSPECTION";
+
+
+        data.decisionReason =
+            document.getElementById(
+                "manual-reason"
+            ).value;
+
+
+        data.decisionComment =
+            document.getElementById(
+                "manual-instructions"
+            ).value.trim() ||
+            "Field verification required.";
+
+
+        data.manualInspection = {
+
+            reason:
+                document.getElementById(
+                    "manual-reason"
+                ).value,
+
+            priority:
+                document.getElementById(
+                    "manual-priority"
+                ).value,
+
+            instructions:
+                document.getElementById(
+                    "manual-instructions"
+                ).value.trim(),
+
+            requestedAt:
+                new Date().toISOString(),
+
+            status:
+                "DISPATCHED TO FIELD"
+
+        };
+
+
+        addAuditLog(
+            activeParcelId,
+            `Manual inspection dispatched — ${data.manualInspection.reason} — Priority: ${data.manualInspection.priority}`
+        );
+
+
+        closeManualModal();
+
+
+        updateTopStatus();
+
+        renderAll();
+
+        startTransmit(
+            "MANUAL INSPECTION"
+        );
+
+    }
+
+
+    /* =========================================================
+       TRANSMISSION BACK TO SAME PHONE
+    ========================================================== */
+
+    function sendCurrentPackage() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        if (!data.decision) {
+
+            alert(
+                "Please select Approve, Reject, Manual Inspection or Deny first."
+            );
+
+            return;
+
+        }
+
+
+        startTransmit(
+            data.decision
+        );
+
+    }
+
+
+    function startTransmit(decision) {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const modal =
+            document.getElementById(
+                "modal-transmit"
+            );
+
+
+        const bar =
+            document.getElementById(
+                "transmit-bar"
+            );
+
+
+        const status =
+            document.getElementById(
+                "transmit-status"
+            );
+
+
+        document.getElementById(
+            "transmit-device"
+        ).textContent =
+            data.device;
+
+
+        modal.classList.remove(
+            "hidden"
+        );
+
+
+        bar.style.width =
+            "0%";
+
+
+        status.textContent =
+            "Preparing reviewed parcel package...";
+
+
+        let progress = 0;
+
+
+        const interval =
+            setInterval(
+                () => {
+
+                    progress += 20;
+
+                    bar.style.width =
+                        `${progress}%`;
+
+
+                    if (progress === 20) {
+
+                        status.textContent =
+                            "Packaging geometry + metadata...";
+
+                    }
+
+                    if (progress === 40) {
+
+                        status.textContent =
+                            "Packaging QA + topology results...";
+
+                    }
+
+                    if (progress === 60) {
+
+                        status.textContent =
+                            "Packaging reviewer decision...";
+
+                    }
+
+                    if (progress === 80) {
+
+                        status.textContent =
+                            "Transmitting to field phone...";
+
+                    }
+
+                    if (progress >= 100) {
+
+                        clearInterval(
+                            interval
+                        );
+
+
+                        status.textContent =
+                            `✓ ${decision} result sent to ${data.device}`;
+
+
+                        addAuditLog(
+                            activeParcelId,
+                            `Review package transmitted to ${data.device} — Decision: ${decision}`
+                        );
+
+
+                        setTimeout(
+                            () => {
+
+                                modal.classList.add(
+                                    "hidden"
+                                );
+
+                                showTransmissionComplete();
+
+                            },
+                            900
+                        );
+
+                    }
+
+                },
+                300
+            );
+
+    }
+
+
+    function showTransmissionComplete() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        alert(
+            `Review package sent successfully.\n\nParcel: ${data.id}\nDevice: ${data.device}\nDecision: ${data.decision}`
+        );
+
+    }
+
+
+    /* =========================================================
+       RECEIVE FROM PHONE
+    ========================================================== */
+
+    function openReceiveModal() {
+
+        document.getElementById(
+            "modal-receive"
+        ).classList.remove(
+            "hidden"
+        );
+
+    }
+
+
+    function closeReceiveModal() {
+
+        document.getElementById(
+            "modal-receive"
+        ).classList.add(
+            "hidden"
+        );
+
+    }
+
+
+    function simulateIncomingParcel() {
+
+        const newId =
+            "PX-" +
+            String(
+                Math.floor(
+                    10000 +
+                    Math.random() * 89999
+                )
+            );
+
+
+        const template =
+            structuredClone(
+                parcelsData["PX-00124"]
+            );
+
+
+        template.id =
+            newId;
+
+
+        template.device =
+            "D-102 (Mobile)";
+
+
+        template.decision =
+            null;
+
+
+        template.decisionReason =
+            "";
+
+
+        template.decisionComment =
+            "";
+
+
+        template.manualInspection =
+            null;
+
+
+        template.captureDate =
+            new Date()
+                .toLocaleDateString(
+                    "en-GB",
+                    {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric"
+                    }
+                );
+
+
+        parcelsData[newId] =
+            template;
+
+
+        activeParcelId =
+            newId;
+
+
+        document.getElementById(
+            "top-parcel-id"
+        ).textContent =
+            newId;
+
+
+        document.getElementById(
+            "top-device-id"
+        ).textContent =
+            "D-102 (Mobile)";
+
+
+        closeReceiveModal();
+
+
+        addAuditLog(
+            newId,
+            "Received parcel payload from field phone D-102"
+        );
+
+
+        renderAll();
+
+        switchView(
+            "viewer"
+        );
+
+
+        alert(
+            `New parcel ${newId} received from field phone D-102.`
+        );
+
+    }
+
+
+    /* =========================================================
+       ZOOM PROBLEM
+    ========================================================== */
+
+    function zoomToProblem() {
+
+        switchView(
+            "viewer"
+        );
+
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const bounds =
+            L.latLngBounds(
+                data.vertices.map(
+                    p => [p[1], p[0]]
+                )
+            );
+
+
+        map.fitBounds(
+            bounds,
+            {
+                padding: [30,30],
+                maxZoom: 21
+            }
+        );
+
+    }
+
+
+    /* =========================================================
+       METADATA
+    ========================================================== */
+
+    function renderMetadata() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const calculatedArea =
+            calculateArea(data);
+
+
+        const calculatedPerimeter =
+            calculatePerimeter(data);
+
+
+        document.getElementById(
+            "parcel-metadata"
+        ).innerHTML = `
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Parcel ID</span>
+                <span class="font-mono font-bold text-white">${data.id}</span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Area</span>
+                <span class="font-mono font-bold text-sky-400">
+                    ${calculatedArea.toFixed(2)} m²
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Perimeter</span>
+                <span class="font-mono text-slate-200">
+                    ${calculatedPerimeter.toFixed(2)} m
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Vertices</span>
+                <span class="font-mono text-slate-200">
+                    ${data.vertices.length}
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">CRS</span>
+                <span class="font-mono text-slate-200">
+                    ${data.crs}
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Source</span>
+                <span class="text-slate-200">
+                    ${data.source}
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Reference ID</span>
+                <span class="font-mono text-blue-400">
+                    ${data.referenceId}
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">AI Confidence</span>
+                <span class="font-bold ${data.aiConfidence >= 85 ? "text-emerald-400" : "text-rose-400"}">
+                    ${data.aiConfidence.toFixed(1)}%
+                </span>
+            </div>
+
+            <div class="flex justify-between border-b border-slate-800 pb-1.5">
+                <span class="text-slate-400">Capture Date</span>
+                <span class="text-slate-200">
+                    ${data.captureDate}
+                </span>
+            </div>
+
+        `;
+
+    }
+
+
+    /* =========================================================
+       REFERENCE
+    ========================================================== */
+
+    function renderReference() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const candidateArea =
+            calculateArea(data);
+
+
+        const candidatePerimeter =
+            calculatePerimeter(data);
+
+
+        const humanArea =
+            data.human
+                ? turf.area(
+                    turf.polygon([
+                        data.human
+                    ])
+                )
+                : candidateArea;
+
+
+        const humanPerimeter =
+            data.human
+                ? turf.length(
+                    turf.lineString(
+                        data.human
+                    ),
+                    {
+                        units: "meters"
+                    }
+                )
+                : candidatePerimeter;
+
+
+        document.getElementById(
+            "reference-candidate-stats"
+        ).innerHTML = statBlock(
+            [
+                ["Area", `${candidateArea.toFixed(2)} m²`],
+                ["Perimeter", `${candidatePerimeter.toFixed(2)} m`],
+                ["Confidence", `${data.aiConfidence.toFixed(1)}%`],
+                ["Vertices", data.vertices.length]
+            ]
+        );
+
+
+        document.getElementById(
+            "reference-cadastral-stats"
+        ).innerHTML = statBlock(
+            [
+                ["Area", `${data.referenceArea.toFixed(2)} m²`],
+                ["Perimeter", `${data.referencePerimeter.toFixed(2)} m`],
+                ["Reference ID", data.referenceId],
+                ["Vertices", data.referenceVertices.length]
+            ]
+        );
+
+
+        document.getElementById(
+            "reference-human-stats"
+        ).innerHTML = statBlock(
+            [
+                ["Area", `${humanArea.toFixed(2)} m²`],
+                ["Perimeter", `${humanPerimeter.toFixed(2)} m`],
+                ["Status", data.decision || "NOT DECIDED"],
+                ["Vertices", data.human ? data.human.length : data.vertices.length]
+            ]
+        );
+
+
+        const areaDiff =
+            Math.abs(
+                candidateArea -
+                data.referenceArea
+            );
+
+
+        const areaDiffPercent =
+            (
+                areaDiff /
+                data.referenceArea
+            ) * 100;
+
+
+        const perimeterDiff =
+            Math.abs(
+                candidatePerimeter -
+                data.referencePerimeter
+            );
+
+
+        const perimeterDiffPercent =
+            (
+                perimeterDiff /
+                data.referencePerimeter
+            ) * 100;
+
+
+        document.getElementById(
+            "reference-table"
+        ).innerHTML = `
+
+            <table class="w-full text-left">
+
+                <thead>
+                    <tr class="border-b border-slate-700">
+                        <th class="p-2 text-slate-400">Metric</th>
+                        <th class="p-2 text-red-400">AI Candidate</th>
+                        <th class="p-2 text-blue-400">Cadastral Reference</th>
+                        <th class="p-2 text-amber-400">Difference</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    <tr class="border-b border-slate-800">
+                        <td class="p-2">Area</td>
+                        <td class="p-2 font-mono">${candidateArea.toFixed(2)} m²</td>
+                        <td class="p-2 font-mono">${data.referenceArea.toFixed(2)} m²</td>
+                        <td class="p-2 font-mono text-amber-400">
+                            ${areaDiff.toFixed(2)} m² (${areaDiffPercent.toFixed(2)}%)
+                        </td>
+                    </tr>
+
+                    <tr class="border-b border-slate-800">
+                        <td class="p-2">Perimeter</td>
+                        <td class="p-2 font-mono">${candidatePerimeter.toFixed(2)} m</td>
+                        <td class="p-2 font-mono">${data.referencePerimeter.toFixed(2)} m</td>
+                        <td class="p-2 font-mono text-amber-400">
+                            ${perimeterDiff.toFixed(2)} m (${perimeterDiffPercent.toFixed(2)}%)
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td class="p-2">CRS</td>
+                        <td class="p-2 font-mono">${data.crs}</td>
+                        <td class="p-2 font-mono">${data.crs}</td>
+                        <td class="p-2 text-emerald-400">Available</td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+        `;
+
+    }
+
+
+    function statBlock(rows) {
+
+        return `
+
+            <div class="space-y-2 text-xs">
+
+                ${rows.map(
+                    ([label,value]) => `
+
+                        <div class="flex justify-between border-b border-slate-800 pb-1.5">
+
+                            <span class="text-slate-400">
+                                ${label}
+                            </span>
+
+                            <span class="font-mono text-white">
+                                ${value}
+                            </span>
+
+                        </div>
+
+                    `
+                ).join("")}
+
+            </div>
+
+        `;
+
+    }
+
+
+    /* =========================================================
+       COMPARISON
+    ========================================================== */
+
+    function renderComparison() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        const candidateArea =
+            calculateArea(data);
+
+
+        const candidatePerimeter =
+            calculatePerimeter(data);
+
+
+        const refArea =
+            data.referenceArea;
+
+
+        const refPerimeter =
+            data.referencePerimeter;
+
+
+        const humanArea =
+            data.human
+                ? turf.area(
+                    turf.polygon([
+                        data.human
+                    ])
+                )
+                : candidateArea;
+
+
+        const humanPerimeter =
+            data.human
+                ? turf.length(
+                    turf.lineString(
+                        data.human
+                    ),
+                    {
+                        units: "meters"
+                    }
+                )
+                : candidatePerimeter;
+
+
+        document.getElementById(
+            "comparison-ai"
+        ).innerHTML =
+            comparisonBlock(
+                [
+                    ["Area", `${candidateArea.toFixed(2)} m²`],
+                    ["Perimeter", `${candidatePerimeter.toFixed(2)} m`],
+                    ["Nodes", data.vertices.length],
+                    ["AI Confidence", `${data.aiConfidence.toFixed(1)}%`]
+                ]
+            );
+
+
+        document.getElementById(
+            "comparison-ref"
+        ).innerHTML =
+            comparisonBlock(
+                [
+                    ["Area", `${refArea.toFixed(2)} m²`],
+                    ["Perimeter", `${refPerimeter.toFixed(2)} m`],
+                    ["Nodes", data.referenceVertices.length],
+                    ["Reference ID", data.referenceId]
+                ]
+            );
+
+
+        document.getElementById(
+            "comparison-human"
+        ).innerHTML =
+            comparisonBlock(
+                [
+                    ["Area", `${humanArea.toFixed(2)} m²`],
+                    ["Perimeter", `${humanPerimeter.toFixed(2)} m`],
+                    ["Nodes", data.human ? data.human.length : data.vertices.length],
+                    ["Decision", data.decision || "NOT DECIDED"]
+                ]
+            );
+
+
+        const candidateAreaDifference =
+            Math.abs(
+                candidateArea -
+                refArea
+            ) /
+            refArea *
+            100;
+
+
+        const humanAreaDifference =
+            Math.abs(
+                humanArea -
+                refArea
+            ) /
+            refArea *
+            100;
+
+
+        document.getElementById(
+            "comparison-difference"
+        ).innerHTML = `
+
+            <div class="grid grid-cols-4 gap-3">
+
+                <div class="bg-slate-900 p-3 rounded border border-slate-800">
+                    <div class="text-[10px] text-slate-500">AI → Reference Area</div>
+                    <div class="text-lg font-bold text-amber-400 mt-1">
+                        ${candidateAreaDifference.toFixed(2)}%
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-3 rounded border border-slate-800">
+                    <div class="text-[10px] text-slate-500">Human → Reference Area</div>
+                    <div class="text-lg font-bold text-emerald-400 mt-1">
+                        ${humanAreaDifference.toFixed(2)}%
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-3 rounded border border-slate-800">
+                    <div class="text-[10px] text-slate-500">AI Area Difference</div>
+                    <div class="text-lg font-bold text-white mt-1">
+                        ${Math.abs(candidateArea - refArea).toFixed(2)} m²
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-3 rounded border border-slate-800">
+                    <div class="text-[10px] text-slate-500">Reviewed Area Difference</div>
+                    <div class="text-lg font-bold text-emerald-400 mt-1">
+                        ${Math.abs(humanArea - refArea).toFixed(2)} m²
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="mt-4 text-[11px] text-slate-400">
+                The comparison is intended to support technical review. It does not by itself determine legal correctness.
+            </div>
+
+        `;
+
+    }
+
+
+    function comparisonBlock(rows) {
+
+        return `
+
+            <div class="space-y-2 text-xs">
+
+                ${rows.map(
+                    ([key,value]) => `
+
+                        <div class="flex justify-between border-b border-slate-800 pb-1.5">
+
+                            <span class="text-slate-400">
+                                ${key}
+                            </span>
+
+                            <span class="font-mono text-white">
+                                ${value}
+                            </span>
+
+                        </div>
+
+                    `
+                ).join("")}
+
+            </div>
+
+        `;
+
+    }
+
+
+    /* =========================================================
+       MANUAL PANEL
+    ========================================================== */
+
+    function renderManualPanel() {
+
+        const manualParcels =
+            Object.values(
+                parcelsData
+            ).filter(
+                p =>
+                    p.decision === "MANUAL INSPECTION"
+            );
+
+
+        if (manualParcels.length === 0) {
+
+            document.getElementById(
+                "manual-panel"
+            ).innerHTML = `
+
+                <div class="bg-gis-800 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-xs">
+
+                    No parcels are currently waiting for manual inspection.
+
+                </div>
+
+            `;
+
+            return;
+
+        }
+
+
+        document.getElementById(
+            "manual-panel"
+        ).innerHTML =
+            manualParcels.map(
+                p => `
+
+                    <div class="bg-gis-800 rounded-xl border border-amber-900/50 p-4 space-y-3">
+
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+
+                            <div>
+
+                                <span class="text-xs font-mono text-sky-400 font-bold">
+                                    ${p.id}
+                                </span>
+
+                                <div class="text-xs text-slate-300 mt-0.5">
+                                    Reason: ${p.manualInspection?.reason || p.decisionReason}
+                                </div>
+
+                            </div>
+
+                            <span class="bg-amber-950 text-amber-400 border border-amber-800 text-[10px] font-bold px-2 py-1 rounded">
+                                ${p.manualInspection?.status || "DISPATCHED"}
+                            </span>
+
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-3 text-xs">
+
+                            <div>
+                                <span class="text-slate-500">
+                                    Device
+                                </span>
+
+                                <div class="font-mono text-white mt-1">
+                                    ${p.device}
+                                </div>
+                            </div>
+
+                            <div>
+                                <span class="text-slate-500">
+                                    Priority
+                                </span>
+
+                                <div class="font-bold text-amber-400 mt-1">
+                                    ${p.manualInspection?.priority || "Normal"}
+                                </div>
+                            </div>
+
+                            <div>
+                                <span class="text-slate-500">
+                                    Instructions
+                                </span>
+
+                                <div class="text-white mt-1">
+                                    ${p.manualInspection?.instructions || p.decisionComment}
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <button
+                            onclick="selectParcel('${p.id}')"
+                            class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-2 rounded text-xs font-semibold">
+
+                            Open Parcel
+
+                        </button>
+
+                    </div>
+
+                `
+            )
+            .join("");
+
+    }
+
+
+    /* =========================================================
+       DASHBOARD
+    ========================================================== */
+
+    function renderDashboard() {
+
+        const parcels =
+            Object.values(
+                parcelsData
+            );
+
+
+        const approved =
+            parcels.filter(
+                p =>
+                    p.decision === "APPROVED"
+            ).length;
+
+
+        const rejected =
+            parcels.filter(
+                p =>
+                    p.decision === "REJECTED" ||
+                    p.decision === "DENIED"
+            ).length;
+
+
+        const manual =
+            parcels.filter(
+                p =>
+                    p.decision === "MANUAL INSPECTION"
+            ).length;
+
+
+        const review =
+            parcels.filter(
+                p =>
+                    !p.decision
+            ).length;
+
+
+        document.getElementById(
+            "kpi-received"
+        ).textContent =
+            parcels.length;
+
+
+        document.getElementById(
+            "kpi-approved"
+        ).textContent =
+            approved;
+
+
+        document.getElementById(
+            "kpi-review"
+        ).textContent =
+            review;
+
+
+        document.getElementById(
+            "kpi-manual"
+        ).textContent =
+            manual + rejected;
+
+
+        document.getElementById(
+            "approved-count"
+        ).textContent =
+            approved;
+
+
+        document.getElementById(
+            "rejected-count"
+        ).textContent =
+            rejected;
+
+
+        document.getElementById(
+            "manual-count"
+        ).textContent =
+            manual;
+
+
+        document.getElementById(
+            "queue-count"
+        ).textContent =
+            review;
+
+
+        document.getElementById(
+            "dashboard-table-body"
+        ).innerHTML =
+            parcels
+                .map(
+                    p => {
+
+                        const decision =
+                            p.decision ||
+                            "UNDER REVIEW";
+
+
+                        const decisionColor =
+                            decision === "APPROVED"
+                                ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                                : decision === "REJECTED"
+                                    ? "bg-orange-950 text-orange-400 border-orange-800"
+                                    : decision === "DENIED"
+                                        ? "bg-rose-950 text-rose-400 border-rose-800"
+                                        : decision === "MANUAL INSPECTION"
+                                            ? "bg-amber-950 text-amber-400 border-amber-800"
+                                            : "bg-slate-900 text-slate-400 border-slate-700";
+
+
+                        return `
+
+                        <tr class="hover:bg-slate-700/30 transition">
+
+                            <td class="p-3 font-bold text-sky-400">
+                                ${p.id}
+                            </td>
+
+                            <td class="p-3 text-slate-400">
+                                ${p.device}
+                            </td>
+
+                            <td class="p-3">
+                                ${p.area.toFixed(2)}
+                            </td>
+
+                            <td class="p-3 ${p.aiConfidence >= 85 ? "text-emerald-400" : "text-rose-400"}">
+                                ${p.aiConfidence.toFixed(1)}%
+                            </td>
+
+                            <td class="p-3">
+
+                                <span
+                                    class="${decisionColor} border px-2 py-0.5 rounded text-[10px]">
+                                    ${decision}
+                                </span>
+
+                            </td>
+
+                            <td class="p-3 text-slate-500">
+                                ${p.captureDate}
+                            </td>
+
+                            <td class="p-3 text-right">
+
+                                <button
+                                    onclick="selectParcel('${p.id}')"
+                                    class="bg-sky-600 hover:bg-sky-500 text-white px-2.5 py-1 rounded text-[11px] font-sans">
+                                    Inspect
+                                </button>
+
+                            </td>
+
+                        </tr>
+
+                        `;
+
+                    }
+                )
+                .join("");
+
+    }
+
+
+    /* =========================================================
+       QUEUE
+    ========================================================== */
+
+    function renderQueue() {
+
+        const parcels =
+            Object.values(
+                parcelsData
+            );
+
+
+        document.getElementById(
+            "queue-grid"
+        ).innerHTML =
+            parcels.map(
+                p => {
+
+                    const status =
+                        p.decision ||
+                        "UNDER REVIEW";
+
+
+                    const color =
+                        status === "APPROVED"
+                            ? "border-emerald-900/50"
+                            : status === "REJECTED"
+                                ? "border-orange-900/50"
+                                : status === "DENIED"
+                                    ? "border-rose-900/50"
+                                    : status === "MANUAL INSPECTION"
+                                        ? "border-amber-900/50"
+                                        : "border-slate-800";
+
+
+                    return `
+
+                    <div class="bg-gis-800 border ${color} p-4 rounded-xl space-y-3">
+
+                        <div class="flex justify-between items-start">
+
+                            <div>
+
+                                <span class="text-xs text-slate-400">
+                                    Parcel ID
+                                </span>
+
+                                <h3 class="text-lg font-bold text-sky-400 font-mono">
+                                    ${p.id}
+                                </h3>
+
+                            </div>
+
+                            <span class="bg-slate-900 border border-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded">
+                                ${status}
+                            </span>
+
+                        </div>
+
+
+                        <div class="text-xs space-y-1 text-slate-300">
+
+                            <div class="flex justify-between">
+                                <span>Area:</span>
+                                <span class="font-mono">
+                                    ${p.area.toFixed(2)} m²
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span>Confidence:</span>
+                                <span class="font-mono">
+                                    ${p.aiConfidence.toFixed(1)}%
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span>Reference:</span>
+                                <span class="font-mono text-blue-400">
+                                    ${p.referenceId}
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span>Device:</span>
+                                <span class="font-mono">
+                                    ${p.device}
+                                </span>
+                            </div>
+
+                        </div>
+
+
+                        <button
+                            onclick="selectParcel('${p.id}')"
+                            class="w-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold py-2 rounded-lg transition">
+
+                            Load into Workstation
+
+                        </button>
+
+                    </div>
+
+                    `;
+
+                }
+            )
+            .join("");
+
+    }
+
+
+    /* =========================================================
+       AUDIT LOG
+    ========================================================== */
+
+    function addAuditLog(
+        parcelId,
+        action
+    ) {
+
+        const timestamp =
+            new Date()
+                .toLocaleTimeString();
+
+
+        const entry =
+            document.createElement(
+                "div"
+            );
+
+
+        entry.className =
+            "flex gap-4 border-b border-slate-800 pb-2 text-slate-400";
+
+
+        entry.innerHTML = `
+
+            <span class="text-slate-500">
+                ${timestamp}
+            </span>
+
+            <span class="text-sky-400 font-bold">
+                ${parcelId}
+            </span>
+
+            <span>
+                ${action}
+            </span>
+
+        `;
+
+
+        document.getElementById(
+            "audit-log-container"
+        ).prepend(
+            entry
+        );
+
+    }
+
+
+    function clearAuditLog() {
+
+        document.getElementById(
+            "audit-log-container"
+        ).innerHTML = "";
+
+        addAuditLog(
+            "-",
+            "Demo audit log cleared"
+        );
+
+    }
+
+
+    /* =========================================================
+       GLOBAL RENDER
+    ========================================================== */
+
+    function renderAll() {
+
+        const data =
+            parcelsData[activeParcelId];
+
+
+        document.getElementById(
+            "top-parcel-id"
+        ).textContent =
+            data.id;
+
+
+        document.getElementById(
+            "top-device-id"
+        ).textContent =
+            data.device;
+
+
+        updateTopStatus();
+
+        renderMetadata();
+
+        renderDashboard();
+
+        renderQueue();
+
+        renderReference();
+
+        renderComparison();
+
+        renderManualPanel();
+
+        runValidation();
+
+        lucide.createIcons();
+
+    }
+
+</script>
+
+</body>
+</html>
+```
